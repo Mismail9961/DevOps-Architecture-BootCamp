@@ -1,6 +1,12 @@
 from fastapi import FastAPI
 import json
 
+app = FastAPI()
+
+app.get("/")
+
+def home():
+    return {"message": "Hello World"}
 
 
 def read_data():
