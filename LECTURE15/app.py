@@ -3,11 +3,13 @@ import json
 
 app = FastAPI()
 
-app.get("/")
-
+@app.get("/")
 def home():
     return {"message": "Hello World"}
 
+@app.get("/data")
+def get_data():
+    return read_data()
 
 def read_data():
     with open('server.json', 'r') as file:
