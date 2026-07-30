@@ -1,210 +1,152 @@
-# Python JSON + FastAPI: Server Monitoring API — Practical Guide
+# Server Monitoring API (FastAPI + JSON)
 
-A condensed, hands-on rewrite of the tutorial — with the actual code and commands filled in so you can copy-paste and run it, instead of just reading about the concepts.
+A lightweight FastAPI application for monitoring multiple remote servers, using a simple JSON file (`server.json`) as the datastore instead of a database. Ideal for early-stage DevOps tooling where you want to track hostname, IP, and status for a handful of servers without the overhead of setting up and maintaining a database.
 
----
+## Why JSON instead of a database?
 
-## 1. Project Setup
+- Zero setup — no DB server, drivers, or connection strings to manage.
+- Easy to read/edit by hand during development.
+- Good enough for early-stage projects (e.g. tracking 40+ EC2 servers).
+- Trade-off: no versioning, no real querying power, no concurrent-write safety.
+
+As the project grows, the plan is to migrate to a proper database (MongoDB, AWS RDS, ElastiCache) for better scalability, querying, and multi-writer safety.
+
+## Requirements
+
+- Python 3.8+
+- `fastapi`
+- `uvicorn`
+
+## Setup
 
 ```bash
-# Create project folder
-mkdir server-api && cd server-api
+# 1. Go to your project directory
+cd ~/server-monitor
 
-# Create and activate a virtual environment (keeps deps isolated)
+# 2. (Recommended) create a virtual environment
 python3 -m venv venv
-source venv/bin/activate        # Linux/Mac
-# venv\Scripts\activate         # Windows
+source venv/bin/activate
 
-# Install dependencies
-pip install fastapi "uvicorn[standard]"
+# 3. Install dependencies
+pip install fastapi uvicorn
+
+# 4. Create the initial JSON datastore
+echo "{}" > server.json
 ```
 
-**Why a venv matters:** without it, `uvicorn` often installs to a path your shell can't find, causing the classic `command not found: uvicorn` error mentioned in the video. A venv keeps the binary on a predictable, activated PATH.
+## Running the server
 
----
-
-## 2. Python Function Basics (Recap)
-
-```python
-def greet(name: str) -> str:
-    return f"Hello, {name}!"
-
-print(greet("Ismail"))
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Type hints (`name: str`, `-> str`) aren't required but are considered best practice — FastAPI actually *relies* on them later to auto-validate request/response data.
+- `--reload` — auto-restarts the server on code changes (development only).
+- `--host 0.0.0.0` — makes the API reachable from other machines (e.g. remote EC2 servers posting their status).
+- `--port 8000` — change if 8000 is already in use.
 
----
+Once running, interactive API docs are available at:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-## 3. Sample JSON Data
+## Project structure
 
-Create `data.json`:
+```
+server-monitor/
+├── main.py        # FastAPI app (routes + JSON I/O helpers)
+├── server.json     # Datastore (auto-created/updated by the app)
+└── README.md
+```
+
+## Core concepts
+
+### JSON helper functions
+- `read_json_file()` — opens `server.json`, loads it into a Python dict, returns it.
+- `write_json_file(data)` — writes a Python dict back to `server.json` with `indent=4` for readability.
+
+All routes read from and write to these helpers rather than touching the file directly — this keeps the file I/O logic in one place.
+
+### Data model
+Each server is stored as a key in the JSON object, where the key is the server name and the value is a dict of its metadata (e.g. IP, hostname, status):
 
 ```json
 {
-  "server_name": "web-01",
-  "ip_address": "192.168.1.10",
-  "status": true,
-  "id": 1,
-  "cpu_usage": 42.5,
-  "memory_usage": 68.2,
-  "users": ["admin", "ismail", "monitor_bot"]
+  "web-01": {
+    "ip": "192.168.1.10",
+    "status": "running"
+  },
+  "db-01": {
+    "ip": "192.168.1.20",
+    "status": "stopped"
+  }
 }
 ```
 
----
+## API Endpoints
 
-## 4. Read/Write JSON Functions (Optimized)
+| Method | Route                        | Description                                      |
+|--------|-------------------------------|---------------------------------------------------|
+| GET    | `/`                            | Health check — confirms the server is running     |
+| GET    | `/read`                        | Returns all server data from `server.json`         |
+| GET    | `/data/serverlist`             | Returns just the list of server names (keys)       |
+| GET    | `/data/{servername}`           | Returns data for a specific server                 |
+| POST   | `/server`                      | Adds a new server entry                            |
+| PUT    | `/server/{server_name}`        | Updates the status of an existing server            |
 
-```python
-import json
-from pathlib import Path
+### Important notes
+- `server_name` / `servername` is always treated as a **string**, even if it looks numeric — this avoids type-mismatch bugs when matching against JSON dict keys.
+- `GET /data/{servername}` returns `{"error": "Server not found"}` if the server doesn't exist (rather than raising an HTTP 404 — keep this in mind if you plan to add proper error status codes later).
+- `POST /server` checks for duplicates before writing — if `server_name` already exists, it returns an error instead of overwriting.
+- `PUT /server/{server_name}` only updates the `status` field of an existing server; it does not create the server if missing.
 
-DATA_FILE = Path(__file__).parent / "data.json"
+## Testing with curl
 
-def read_json() -> dict:
-    """Load and return the JSON file contents as a dict."""
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def write_json(data: dict) -> None:
-    """Persist a dict back to the JSON file, pretty-printed."""
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-```
-
-**Key optimizations vs. the video's version:**
-- `Path(__file__).parent` builds an absolute path to the JSON file, so the script works no matter which directory you run it from — this fixes the "file not found" issue that trips people up when running `uvicorn` from a different folder.
-- `with open(...)` auto-closes the file even if an error occurs (no dangling file handles).
-- `encoding="utf-8"` avoids silent encoding bugs on Windows.
-
----
-
-## 5. FastAPI Application
-
-Create `main.py`:
-
-```python
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from file_ops import read_json, write_json   # your read/write functions above
-
-app = FastAPI(title="Server Monitoring API")
-
-# Pydantic model = automatic request validation + auto-generated docs
-class ServerUpdate(BaseModel):
-    status: bool | None = None
-    cpu_usage: float | None = None
-    memory_usage: float | None = None
-
-@app.get("/")
-def home():
-    return {"message": "API is running"}
-
-@app.get("/data")
-def get_data():
-    return read_json()
-
-@app.post("/data")
-def update_data(update: ServerUpdate):
-    data = read_json()
-    update_dict = update.model_dump(exclude_unset=True)
-    if not update_dict:
-        raise HTTPException(status_code=400, detail="No fields provided to update")
-    data.update(update_dict)
-    write_json(data)
-    return {"message": "Data updated", "data": data}
-```
-
-**Key optimizations vs. the video's version:**
-- Uses a `Pydantic` model (`ServerUpdate`) instead of accepting a raw dict — this gives you free input validation, type coercion, and interactive API docs.
-- `exclude_unset=True` means POST requests only need to send the fields they're changing, not the whole object.
-- Returns a proper `400` error via `HTTPException` if the request body is empty, instead of failing silently.
-
----
-
-## 6. Running the API
-
+**Health check**
 ```bash
-uvicorn main:app --reload --port 8000
+curl http://localhost:8000/
 ```
 
-| Flag | Purpose |
-|---|---|
-| `main:app` | `main.py` file → `app` object inside it |
-| `--reload` | Hot-reloads on code changes (dev only — remove in production) |
-| `--port 8000` | Avoids conflicts if another service is on the default port |
-| `--host 0.0.0.0` | Add this if you need the API reachable from other machines on your network |
-
-**Fixing the `uvicorn: command not found` PATH issue** mentioned in the video (if not using a venv):
-
+**Get all server data**
 ```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+curl http://localhost:8000/read
 ```
 
-**Test it's alive:**
-
+**Get list of server names**
 ```bash
-curl http://127.0.0.1:8000/
-curl http://127.0.0.1:8000/data
-curl -X POST http://127.0.0.1:8000/data \
+curl http://localhost:8000/data/serverlist
+```
+
+**Get a specific server**
+```bash
+curl http://localhost:8000/data/web-01
+```
+
+**Add a new server**
+```bash
+curl -X POST "http://localhost:8000/server?server_name=web-01" \
   -H "Content-Type: application/json" \
-  -d '{"cpu_usage": 75.3, "status": true}'
+  -d '{
+        "ip": "192.168.1.10",
+        "status": "running"
+      }'
 ```
 
-**Bonus — free interactive docs:** FastAPI auto-generates a Swagger UI at:
-```
-http://127.0.0.1:8000/docs
-```
-No extra code needed — useful for testing endpoints without curl/Postman.
-
----
-
-## 7. Extending It: Multi-Server Monitoring
-
-The video's "real world" use case — one JSON file, one endpoint per server, or a single endpoint keyed by server ID:
-
-```python
-@app.get("/servers/{server_id}")
-def get_server(server_id: int):
-    data = read_json()
-    servers = data.get("servers", [])
-    for s in servers:
-        if s["id"] == server_id:
-            return s
-    raise HTTPException(status_code=404, detail="Server not found")
-```
-
-For anything beyond a handful of servers, swap the flat JSON file for **SQLite** — concurrent writes to a single JSON file from multiple monitoring scripts will eventually corrupt data (no locking). SQLite (via Python's built-in `sqlite3`) gives you the same simplicity with safe concurrent access.
-
----
-
-## 8. Running in the Background / Production Notes
-
-- **Dev:** `uvicorn main:app --reload`
-- **Production:** drop `--reload`, add a process manager so it survives reboots/crashes:
-  ```bash
-  pip install gunicorn
-  gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-  ```
-- Or run it as a `systemd` service so it auto-restarts on failure and starts on boot — worth doing for any server-monitoring API that needs to stay up continuously.
-
----
-
-## Quick Reference: Command Cheat Sheet
-
+**Update a server's status**
 ```bash
-# Setup
-python3 -m venv venv && source venv/bin/activate
-pip install fastapi "uvicorn[standard]"
-
-# Run (dev)
-uvicorn main:app --reload --port 8000
-
-# Run (prod)
-gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-
-# Test
-curl http://127.0.0.1:8000/data
+curl -X PUT "http://localhost:8000/server/web-01?status=stopped"
 ```
+
+## Common issues
+
+| Issue                                       | Cause / Fix                                                                 |
+|----------------------------------------------|-------------------------------------------------------------------------------|
+| `FileNotFoundError: server.json`              | Run `echo "{}" > server.json` before starting the server                     |
+| `422 Unprocessable Entity` on POST/PUT        | Check you're passing `server_name`/`status` as query params, and the body as valid JSON |
+| Server name mismatch (e.g. `1` vs `"1"`)      | Always send server names as strings                                          |
+| Changes not reflecting                        | Make sure you're running with `--reload` during development                  |
+
+## Suggested next steps (from the lecture)
+
+- Use proper HTTP status codes (404 for not found, 409 for conflict, etc.) instead of returning `{"error": ...}` with a 200 status.
+- Move `server_name` in `POST /server` and `status` in `PUT /server/{server_name}` into the request body / Pydantic models for cleaner validation instead of query params.
+- Add a bash script on each monitored server that periodically POSTs/PUTs its status to this API for centralized, real-time tracking.
+- Migrate from JSON file storage to a real database (MongoDB, AWS RDS, etc.) once you need versioning, concurrent writes, or complex queries.

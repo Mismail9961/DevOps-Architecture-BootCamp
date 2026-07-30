@@ -1,0 +1,68 @@
+{
+    "server1": {
+        "id": 1,
+        "name": "WebServer-1",
+        "ip": "192.168.18.101",
+        "status": "stopped",
+        "users": [
+            "Alice",
+            "Bob",
+            "Charlie"
+        ]
+    },
+    "server2": {
+        "id": 2,
+        "name": "WebServer-2",
+        "ip": "192.168.18.102",
+        "status": "stopped",
+        "users": [
+            "David",
+            "Emma",
+            "Frank"
+        ]
+    },
+    "server3": {
+        "id": 3,
+        "name": "DatabaseServer",
+        "ip": "192.168.18.103",
+        "status": "running",
+        "users": [
+            "Grace",
+            "Henry",
+            "Isabella"
+        ]
+    },
+    "server4": {
+        "id": 4,
+        "name": "BackupServer",
+        "ip": "192.168.18.104",
+        "status": "maintenance",
+        "users": [
+            "Jack",
+            "Karen",
+            "Leo"
+        ]
+    },
+    "server5": {
+        "id": 5,
+        "name": "DevServer",
+        "ip": "192.168.18.105",
+        "status": "running",
+        "users": [
+            "Mike",
+            "Nina",
+            "Oscar"
+        ]
+    },
+    "server6": {
+        "id": 6,
+        "name": "DatabaseServer-1",
+        "ip": "192.168.18.106",
+        "status": "running",
+        "users": [
+            "David",
+            "Emma",
+            "Frank"
+        ]
+    }
+}
