@@ -119,3 +119,112 @@ To successfully execute the projects in this repository, ensure your local works
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details[cite: 1].
+
+
+# EC2 Instances Setup and Configuration
+
+## Live Session and Audio Check 🎙️
+
+Verified live stream audio quality before proceeding.
+
+Confirmed audio was working correctly on live broadcast.
+
+## Virtual Machines Creation and Configuration ⚙️
+
+### Initial Setup
+
+Created all required security groups.
+
+Started creating virtual machines with user data scripts.
+
+### VPA Instance Setup
+
+Instance type: P3 Micro on U12 with subnet set to public.
+
+Enabled auto-assign public IP and attached security groups.
+
+Set storage to 10 GB.
+
+Added user data script for automatic setup including updates and hostname configuration.
+
+Installed prerequisites: curl, CA certificates, net-tools, and others.
+
+Added apt repository and executed apt update and installation commands.
+
+Used OpenVPN account to get installation script for OpenVPN server.
+
+### Proxy Machines Setup
+
+Forward Proxy: Updated existing script for environment variables and VPC CIDR settings.
+
+Reverse Proxy: Configured with Nginx, set hostname and installed required packages.
+
+Used shell commands to clear and update Nginx default site configuration.
+
+Managed IP addresses and ports carefully, using placeholders when actual IPs were not available yet.
+
+## Post-Deployment Validation and Troubleshooting 🔍
+
+### OpenVPN Server Validation
+
+Accessed OpenVPN web page via public IP on port 943.
+
+Reset user passwords and added new users with admin privileges.
+
+Configured global access rules for VPN users limited to VPC IP pools.
+
+Downloaded connection profiles for client setup.
+
+### Proxy Servers Validation
+
+Forward Proxy logs checked; initial script had issues printing VPC CIDR variable.
+
+Debugged shell script parameters (dollar notation) and variable assignments.
+
+Verified Squid proxy configuration integrity and restarted service.
+
+Checked Nginx configuration on reverse proxy; realized missing systemctl restart command.
+
+Applied restarts to update live configurations.
+
+### Networking Adjustments
+
+Allocated Elastic IPs for the VPA instance to ensure static IP addressing.
+
+Updated OpenVPN server DNS settings with Elastic IP.
+
+Managed subnet assignments for default, static, and dynamic IP ranges.
+
+## Advanced User Data and Scripting Insights 💻
+
+### Shell Scripting Best Practices
+
+Differentiated between positional parameters in scripts (e.g., $1 vs variables).
+
+Emphasized importance of scripting for DevOps efficiency to automate instance setups.
+
+Noted limitations of user data scripts understanding only shell commands, no Python.
+
+Applied modular scripting techniques to allow easy updates and debugging.
+
+### Use of Utilities and Commands
+
+Used echo, cat, and redirection operators to edit configuration files programmatically.
+
+Explained difference between single ('&gt;') and double ('&gt;&gt;') redirection.
+
+Employed environment variables export for proxy settings relevant to web traffic.
+
+Highlighted the necessity of reloading or restarting services like Squid and Nginx after config changes.
+
+## Final Remarks and DevOps Philosophy 🚀
+
+Manual initial configuration helped in drafting robust automation scripts.
+
+Scripting saves time and enhances reliability in repeated deployments across environments like dev, UAT, SIT, test, integration, and prod.
+
+With proper scripting, SSH access and broad security rules can be minimized, improving security posture.
+
+Future-ready infrastructure includes HTTPS enabled sites, SSL certificates, and restricted attack surfaces.
+
+
